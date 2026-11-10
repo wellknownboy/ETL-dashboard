@@ -1,0 +1,1206 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Activity, Users, Cpu, AlertTriangle, Play, Pause, Search, Plus, Filter,
+  Trash2, Edit, RefreshCw, Power, Wrench, ShieldAlert, CheckCircle2,
+  Clock, Thermometer, Battery, LayoutDashboard, UserCheck, HardDrive,
+  Bell, Settings, ChevronRight, X, Eye, ArrowUpRight, Zap
+} from 'lucide-react';
+import { 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, BarChart, Bar, Legend
+} from 'recharts';
+
+// --- INITIAL MOCK DATA ---
+const initialPersonnel = [
+  { id: 'EMP-101', name: 'Zhang Wei (张伟)', role: 'Senior Technician', zone: 'Zone A - Assembly', shift: 'Morning', status: 'Working', heartRate: 74, bodyTemp: 36.5, lastActive: 'Just now' },
+  { id: 'EMP-102', name: 'Li Na (李娜)', role: 'Safety Inspector', zone: 'Zone B - Chemical Processing', shift: 'Morning', status: 'Working', heartRate: 82, bodyTemp: 36.8, lastActive: '2 mins ago' },
+  { id: 'EMP-103', name: 'Wang Qiang (王强)', role: 'Machine Operator', zone: 'Zone C - Machining', shift: 'Morning', status: 'Hazard', heartRate: 115, bodyTemp: 38.1, lastActive: 'Just now' },
+  { id: 'EMP-104', name: 'Liu Yang (刘洋)', role: 'Maintenance Lead', zone: 'Zone A - Assembly', shift: 'Night', status: 'On Break', heartRate: 68, bodyTemp: 36.4, lastActive: '15 mins ago' },
+  { id: 'EMP-105', name: 'Chen Jie (陈杰)', role: 'Logistics Supervisor', zone: 'Warehouse 1', shift: 'Morning', status: 'Offline', heartRate: 0, bodyTemp: 0, lastActive: '3 hours ago' },
+  { id: 'EMP-106', name: 'Zhao Min (赵敏)', role: 'Automation Specialist', zone: 'Zone C - Machining', shift: 'Night', status: 'Working', heartRate: 78, bodyTemp: 36.6, lastActive: 'Just now' },
+];
+
+const initialMachines = [
+  { id: 'MAC-801', name: 'CNC Milling Center #1', type: 'CNC Heavy Duty', zone: 'Zone C - Machining', status: 'Running', temp: 68.5, load: 84, powerState: true, lastMaintenance: '2025-02-10' },
+  { id: 'MAC-802', name: 'Robotic Arm Conveyor', type: 'Robotics Assembly', zone: 'Zone A - Assembly', status: 'Running', temp: 52.1, load: 62, powerState: true, lastMaintenance: '2025-01-28' },
+  { id: 'MAC-803', name: 'Chemical Mixer Tank B', type: 'Fluid Processing', zone: 'Zone B - Chemical Processing', status: 'Fault', temp: 94.2, load: 98, powerState: false, lastMaintenance: '2024-12-15' },
+  { id: 'MAC-804', name: 'Automated Guided Vehicle 03', type: 'Logistics AGV', zone: 'Warehouse 1', status: 'Idle', temp: 34.0, load: 12, powerState: true, lastMaintenance: '2025-02-01' },
+  { id: 'MAC-805', name: 'Hydraulic Stamping Press', type: 'Press Machine', zone: 'Zone C - Machining', status: 'Maintenance', temp: 28.4, load: 0, powerState: false, lastMaintenance: 'In Progress' },
+  { id: 'MAC-806', name: 'High-Temp Solder Oven', type: 'Thermal Solder', zone: 'Zone A - Assembly', status: 'Running', temp: 210.5, load: 76, powerState: true, lastMaintenance: '2025-02-14' },
+];
+
+const initialLogs = [
+  { id: 1001, timestamp: '11:24:15', category: 'Personnel', type: 'Hazard', message: 'Elevated heart rate & body temp detected on Wang Qiang (EMP-103)', status: 'Active' },
+  { id: 1002, timestamp: '11:20:08', category: 'Machine', type: 'Fault', message: 'Chemical Mixer Tank B (MAC-803) exceeded temperature threshold (94.2°C)', status: 'Active' },
+  { id: 1003, timestamp: '11:05:42', category: 'System', type: 'Info', message: 'Automatic diagnostics cycle completed for Zone A', status: 'Resolved' },
+  { id: 1004, timestamp: '10:48:19', category: 'Machine', type: 'Warning', message: 'CNC Milling Center #1 operating at >80% heavy load for 2 hours', status: 'Resolved' },
+  { id: 1005, timestamp: '09:30:00', category: 'Personnel', type: 'Info', message: 'Shift transition completed. 24 active operators checked in.', status: 'Resolved' }
+];
+
+// Initial efficiency trend time-series data
+const initialTrendData = [
+  { time: '10:00', loadAvg: 65, avgTemp: 55 },
+  { time: '10:15', loadAvg: 68, avgTemp: 56 },
+  { time: '10:30', loadAvg: 72, avgTemp: 58 },
+  { time: '10:45', loadAvg: 70, avgTemp: 57 },
+  { time: '11:00', loadAvg: 78, avgTemp: 62 },
+  { time: '11:15', loadAvg: 81, avgTemp: 65 },
+  { time: '11:30', loadAvg: 76, avgTemp: 63 }
+];
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [isSimulating, setIsSimulating] = useState(true);
+  const [personnel, setPersonnel] = useState(initialPersonnel);
+  const [machines, setMachines] = useState(initialMachines);
+  const [logs, setLogs] = useState(initialLogs);
+  const [trendData, setTrendData] = useState(initialTrendData);
+
+  // Modals state
+  const [personnelModalOpen, setPersonnelModalOpen] = useState(false);
+  const [editingPersonnel, setEditingPersonnel] = useState(null);
+  const [machineModalOpen, setMachineModalOpen] = useState(false);
+  const [editingMachine, setEditingMachine] = useState(null);
+
+  // Filters state
+  const [personnelSearch, setPersonnelSearch] = useState('');
+  const [personnelStatusFilter, setPersonnelStatusFilter] = useState('All');
+  const [personnelZoneFilter, setPersonnelZoneFilter] = useState('All');
+
+  const [machineSearch, setMachineSearch] = useState('');
+  const [machineStatusFilter, setMachineStatusFilter] = useState('All');
+
+  const [logTypeFilter, setLogTypeFilter] = useState('All');
+
+  // Notification Toast state
+  const [toastMessage, setToastMessage] = useState(null);
+
+  const showToast = (msg, type = 'info') => {
+    setToastMessage({ msg, type });
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  // Real-time Simulation Engine
+  useEffect(() => {
+    if (!isSimulating) return;
+
+    const interval = setInterval(() => {
+      // 1. Randomize machine temp & load slightly
+      setMachines(prevMachines =>
+        prevMachines.map(m => {
+          if (m.status === 'Running') {
+            const loadDelta = (Math.random() - 0.5) * 4;
+            const tempDelta = (Math.random() - 0.5) * 1.5;
+            const newLoad = Math.min(100, Math.max(10, Math.round(m.load + loadDelta)));
+            const newTemp = Math.min(250, Math.max(20, parseFloat((m.temp + tempDelta).toFixed(1))));
+            return { ...m, load: newLoad, temp: newTemp };
+          }
+          return m;
+        })
+      );
+
+      // 2. Randomize working personnel Vitals
+      setPersonnel(prevPersonnel =>
+        prevPersonnel.map(p => {
+          if (p.status === 'Working' || p.status === 'Hazard') {
+            const hrDelta = Math.floor((Math.random() - 0.5) * 6);
+            const newHr = Math.min(140, Math.max(60, p.heartRate + hrDelta));
+            return { ...p, heartRate: newHr };
+          }
+          return p;
+        })
+      );
+
+      // 3. Append to trend chart
+      const now = new Date();
+      const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+      
+      setTrendData(prevTrend => {
+        const running = machines.filter(m => m.status === 'Running');
+        const avgLd = running.length ? Math.round(running.reduce((a, b) => a + b.load, 0) / running.length) : 0;
+        const avgTp = running.length ? Math.round(running.reduce((a, b) => a + b.temp, 0) / running.length) : 0;
+        const updated = [...prevTrend.slice(1), { time: timeStr, loadAvg: avgLd, avgTemp: avgTp }];
+        return updated;
+      });
+
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isSimulating, machines]);
+
+  // Derived KPI values
+  const stats = useMemo(() => {
+    const totalStaff = personnel.length;
+    const activeStaff = personnel.filter(p => p.status === 'Working').length;
+    const hazardStaff = personnel.filter(p => p.status === 'Hazard').length;
+
+    const totalMac = machines.length;
+    const runningMac = machines.filter(m => m.status === 'Running').length;
+    const faultMac = machines.filter(m => m.status === 'Fault').length;
+    const runningRate = totalMac > 0 ? ((runningMac / totalMac) * 100).toFixed(1) : '0';
+
+    const activeAlertsCount = logs.filter(l => l.status === 'Active').length;
+
+    return { totalStaff, activeStaff, hazardStaff, totalMac, runningMac, faultMac, runningRate, activeAlertsCount };
+  }, [personnel, machines, logs]);
+
+  // Pie chart data for Zone distribution
+  const zoneDistribution = useMemo(() => {
+    const counts = {};
+    personnel.forEach(p => {
+      counts[p.zone] = (counts[p.zone] || 0) + 1;
+    });
+    return Object.keys(counts).map(zone => ({ name: zone, value: counts[zone] }));
+  }, [personnel]);
+
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+
+  // --- CRUD FUNCTIONS FOR PERSONNEL ---
+  const handleSavePersonnel = (data) => {
+    if (editingPersonnel) {
+      setPersonnel(prev => prev.map(p => p.id === editingPersonnel.id ? { ...p, ...data } : p));
+      showToast(`Updated operator profile: ${data.name}`);
+    } else {
+      const newId = `EMP-${Math.floor(100 + Math.random() * 900)}`;
+      setPersonnel(prev => [...prev, { ...data, id: newId, lastActive: 'Just now' }]);
+      showToast(`Added new operator: ${data.name}`);
+    }
+    setPersonnelModalOpen(false);
+    setEditingPersonnel(null);
+  };
+
+  const handleDeletePersonnel = (id) => {
+    setPersonnel(prev => prev.filter(p => p.id !== id));
+    showToast('Personnel removed successfully', 'warning');
+  };
+
+  // --- CRUD FUNCTIONS FOR MACHINES ---
+  const handleSaveMachine = (data) => {
+    if (editingMachine) {
+      setMachines(prev => prev.map(m => m.id === editingMachine.id ? { ...m, ...data } : m));
+      showToast(`Updated machinery settings for: ${data.name}`);
+    } else {
+      const newId = `MAC-${Math.floor(800 + Math.random() * 100)}`;
+      setMachines(prev => [...prev, { ...data, id: newId, load: 0, temp: 25.0, powerState: false }]);
+      showToast(`Registered new machine asset: ${data.name}`);
+    }
+    setMachineModalOpen(false);
+    setEditingMachine(null);
+  };
+
+  const handleDeleteMachine = (id) => {
+    setMachines(prev => prev.filter(m => m.id !== id));
+    showToast('Machine asset removed', 'warning');
+  };
+
+  const handleTogglePower = (id) => {
+    setMachines(prev => prev.map(m => {
+      if (m.id === id) {
+        const nextState = !m.powerState;
+        const nextStatus = nextState ? 'Running' : 'Idle';
+        showToast(`Machine ${m.name} power state toggled to ${nextState ? 'ON' : 'OFF'}`);
+        return { ...m, powerState: nextState, status: nextStatus, load: nextState ? 50 : 0 };
+      }
+      return m;
+    }));
+  };
+
+  const handleResolveLog = (id) => {
+    setLogs(prev => prev.map(l => l.id === id ? { ...l, status: 'Resolved' } : l));
+    showToast('Alert marked as resolved', 'info');
+  };
+
+  // Filtering Logic
+  const filteredPersonnel = personnel.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(personnelSearch.toLowerCase()) || p.id.toLowerCase().includes(personnelSearch.toLowerCase());
+    const matchesStatus = personnelStatusFilter === 'All' || p.status === personnelStatusFilter;
+    const matchesZone = personnelZoneFilter === 'All' || p.zone === personnelZoneFilter;
+    return matchesSearch && matchesStatus && matchesZone;
+  });
+
+  const filteredMachines = machines.filter(m => {
+    const matchesSearch = m.name.toLowerCase().includes(machineSearch.toLowerCase()) || m.id.toLowerCase().includes(machineSearch.toLowerCase());
+    const matchesStatus = machineStatusFilter === 'All' || m.status === machineStatusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const filteredLogs = logs.filter(l => {
+    if (logTypeFilter === 'All') return true;
+    return l.type === logTypeFilter;
+  });
+
+  return (
+    <div className="flex h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
+
+      {/* TOAST NOTIFICATION */}
+      {toastMessage && (
+        <div className={`fixed top-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border backdrop-blur-md transition-all duration-300 animate-bounce ${
+          toastMessage.type === 'warning' ? 'bg-amber-950/80 border-amber-500/50 text-amber-200' :
+          toastMessage.type === 'error' ? 'bg-rose-950/80 border-rose-500/50 text-rose-200' :
+          'bg-cyan-950/80 border-cyan-500/50 text-cyan-200'
+        }`}>
+          <Zap className="w-5 h-5 text-current animate-pulse" />
+          <span className="text-sm font-medium">{toastMessage.msg}</span>
+        </div>
+      )}
+
+      {/* LEFT NAVIGATION BAR */}
+      <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between select-none">
+        <div>
+          {/* Logo & Header */}
+          <div className="p-6 border-b border-slate-800 flex items-center gap-3">
+            <div className="p-2.5 bg-gradient-to-tr from-cyan-600 to-blue-600 rounded-xl shadow-lg shadow-cyan-500/20">
+              <Activity className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="font-bold text-lg leading-tight tracking-wide text-white">VanguardOps</h1>
+              <p className="text-xs text-slate-4-00 font-mono tracking-wider text-cyan-400">STATUS MONITOR v2.4</p>
+            </div>
+          </div>
+
+          {/* Navigation Links */}
+          <nav className="p-4 space-y-1">
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                activeTab === 'dashboard'
+                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-sm shadow-cyan-500/10'
+                  : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+              }`}
+            >
+              <LayoutDashboard className="w-5 h-5" />
+              Overview Dashboard
+            </button>
+
+            <button
+              onClick={() => setActiveTab('personnel')}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                activeTab === 'personnel'
+                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-sm shadow-cyan-500/10'
+                  : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Users className="w-5 h-5" />
+                Personnel Status
+              </div>
+              {stats.hazardStaff > 0 && (
+                <span className="bg-rose-500/20 text-rose-400 text-xs px-2 py-0.5 rounded-full border border-rose-500/30 font-mono">
+                  {stats.hazardStaff}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveTab('machines')}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                activeTab === 'machines'
+                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-sm shadow-cyan-500/10'
+                  : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Cpu className="w-5 h-5" />
+                Equipment Monitor
+              </div>
+              {stats.faultMac > 0 && (
+                <span className="bg-amber-500/20 text-amber-400 text-xs px-2 py-0.5 rounded-full border border-amber-500/30 font-mono">
+                  {stats.faultMac}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveTab('logs')}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                activeTab === 'logs'
+                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-sm shadow-cyan-500/10'
+                  : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Bell className="w-5 h-5" />
+                Alerts & Audit Logs
+              </div>
+              {stats.activeAlertsCount > 0 && (
+                <span className="bg-rose-500 text-slate-950 font-bold text-xs px-2 py-0.5 rounded-full animate-pulse">
+                  {stats.activeAlertsCount}
+                </span>
+              )}
+            </button>
+          </nav>
+        </div>
+
+        {/* Live Controls & Footer Info */}
+        <div className="p-4 border-t border-slate-800 space-y-3">
+          <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800/80 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className={`w-2.5 h-2.5 rounded-full ${isSimulating ? 'bg-emerald-500 animate-ping' : 'bg-slate-500'}`} />
+              <span className="text-xs text-slate-300 font-medium">
+                {isSimulating ? 'Telemetry Live' : 'Feed Paused'}
+              </span>
+            </div>
+            <button
+              onClick={() => setIsSimulating(!isSimulating)}
+              className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"
+              title={isSimulating ? 'Pause Telemetry' : 'Resume Telemetry'}
+            >
+              {isSimulating ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between px-2 text-xs text-slate-500">
+            <span>System Status: <span className="text-emerald-400">Normal</span></span>
+            <span>Server: AP-EAST-1</span>
+          </div>
+        </div>
+      </aside>
+
+      {/* MAIN CONTENT AREA */}
+      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-slate-950">
+        
+        {/* TOP HEADER */}
+        <header className="sticky top-0 z-10 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 px-8 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-bold text-white capitalize">
+              {activeTab === 'dashboard' && 'Operations Center Dashboard'}
+              {activeTab === 'personnel' && 'Personnel Management & Telemetry'}
+              {activeTab === 'machines' && 'Equipment & Asset Telemetry'}
+              {activeTab === 'logs' && 'System Event Logs & Notifications'}
+            </h2>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <span className="text-xs font-mono bg-slate-800 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-700">
+              System Time: {new Date().toLocaleTimeString()}
+            </span>
+            {activeTab === 'personnel' && (
+              <button
+                onClick={() => { setEditingPersonnel(null); setPersonnelModalOpen(true); }}
+                className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-medium transition-all shadow-lg shadow-cyan-600/20"
+              >
+                <Plus className="w-4 h-4" /> Add Personnel
+              </button>
+            )}
+            {activeTab === 'machines' && (
+              <button
+                onClick={() => { setEditingMachine(null); setMachineModalOpen(true); }}
+                className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-medium transition-all shadow-lg shadow-cyan-600/20"
+              >
+                <Plus className="w-4 h-4" /> Add Equipment
+              </button>
+            )}
+          </div>
+        </header>
+
+        {/* TAB CONTENTS */}
+        <div className="p-8 space-y-8">
+
+          {/* ==================== TAB 1: OVERVIEW DASHBOARD ==================== */}
+          {activeTab === 'dashboard' && (
+            <>
+              {/* KPI Summary Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                
+                {/* Total Personnel */}
+                <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl relative overflow-hidden group hover:border-slate-700 transition-all">
+                  <div className="absolute right-4 top-4 p-3 bg-blue-500/10 text-blue-400 rounded-xl">
+                    <Users className="w-6 h-6" />
+                  </div>
+                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Personnel</p>
+                  <h3 className="text-3xl font-extrabold text-white mt-2">{stats.totalStaff}</h3>
+                  <div className="mt-4 flex items-center gap-2 text-xs">
+                    <span className="text-emerald-400 font-semibold">{stats.activeStaff} Active</span>
+                    <span className="text-slate-500">•</span>
+                    <span className="text-amber-400 font-semibold">{stats.hazardStaff} Hazard Alert</span>
+                  </div>
+                </div>
+
+                {/* Machine Fleet */}
+                <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl relative overflow-hidden group hover:border-slate-700 transition-all">
+                  <div className="absolute right-4 top-4 p-3 bg-cyan-500/10 text-cyan-400 rounded-xl">
+                    <Cpu className="w-6 h-6" />
+                  </div>
+                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Machinery</p>
+                  <h3 className="text-3xl font-extrabold text-white mt-2">{stats.totalMac}</h3>
+                  <div className="mt-4 flex items-center gap-2 text-xs">
+                    <span className="text-emerald-400 font-semibold">{stats.runningMac} Running</span>
+                    <span className="text-slate-500">•</span>
+                    <span className="text-rose-400 font-semibold">{stats.faultMac} Faults</span>
+                  </div>
+                </div>
+
+                {/* Fleet Running Rate */}
+                <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl relative overflow-hidden group hover:border-slate-700 transition-all">
+                  <div className="absolute right-4 top-4 p-3 bg-emerald-500/10 text-emerald-400 rounded-xl">
+                    <Activity className="w-6 h-6" />
+                  </div>
+                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Fleet Operational Rate</p>
+                  <h3 className="text-3xl font-extrabold text-white mt-2">{stats.runningRate}%</h3>
+                  <div className="w-full bg-slate-800 h-2 rounded-full mt-4 overflow-hidden">
+                    <div 
+                      className="bg-emerald-500 h-full transition-all duration-500" 
+                      style={{ width: `${stats.runningRate}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Active System Alerts */}
+                <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl relative overflow-hidden group hover:border-slate-700 transition-all">
+                  <div className="absolute right-4 top-4 p-3 bg-rose-500/10 text-rose-400 rounded-xl">
+                    <AlertTriangle className="w-6 h-6" />
+                  </div>
+                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Active Alerts</p>
+                  <h3 className="text-3xl font-extrabold text-white mt-2">{stats.activeAlertsCount}</h3>
+                  <div className="mt-4 flex items-center gap-1.5 text-xs text-slate-400">
+                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Requires Dispatcher Action</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* CHARTS SECTION */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                {/* Trend Chart (2 Cols) */}
+                <div className="lg:col-span-2 bg-slate-900/90 border border-slate-800 p-6 rounded-2xl">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h3 className="text-base font-bold text-white">Live Telemetry Trends</h3>
+                      <p className="text-xs text-slate-400">Average Machine Load vs Temperature Over Time</p>
+                    </div>
+                    <span className="flex items-center gap-1 text-xs text-cyan-400 bg-cyan-950/60 border border-cyan-800 px-2.5 py-1 rounded-full">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span> Live Feed
+                    </span>
+                  </div>
+
+                  <div className="h-72 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={trendData}>
+                        <defs>
+                          <linearGradient id="colorLoad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/>
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="colorTemp" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.4}/>
+                            <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                        <XAxis dataKey="time" stroke="#64748b" fontSize={12} />
+                        <YAxis stroke="#64748b" fontSize={12} />
+                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px' }} />
+                        <Area type="monotone" dataKey="loadAvg" name="Avg Load (%)" stroke="#3b82f6" fillOpacity={1} fill="url(#colorLoad)" strokeWidth={2} />
+                        <Area type="monotone" dataKey="avgTemp" name="Avg Temp (°C)" stroke="#ef4444" fillOpacity={1} fill="url(#colorTemp)" strokeWidth={2} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Zone Distribution Pie Chart */}
+                <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-white mb-1">Personnel Zone Distribution</h3>
+                    <p className="text-xs text-slate-400 mb-4">Active headcount grouped by site zone</p>
+                    <div className="h-56 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={zoneDistribution}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={55}
+                            outerRadius={80}
+                            paddingAngle={5}
+                            dataKey="value"
+                          >
+                            {zoneDistribution.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px' }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 mt-2">
+                    {zoneDistribution.map((item, idx) => (
+                      <div key={item.name} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
+                          <span className="text-slate-300">{item.name}</span>
+                        </div>
+                        <span className="font-mono font-bold text-white">{item.value} Staff</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* QUICK STATUS SNAPSHOT TABLES */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                
+                {/* Personnel Hazard Alerts Quick View */}
+                <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <UserCheck className="w-4 h-4 text-cyan-400" /> Personnel Health Watch
+                    </h3>
+                    <button 
+                      onClick={() => setActiveTab('personnel')} 
+                      className="text-xs text-cyan-400 hover:underline flex items-center gap-1"
+                    >
+                      View All <ChevronRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    {personnel.map(p => (
+                      <div key={p.id} className="p-3 bg-slate-950 rounded-xl border border-slate-800/80 flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-sm text-slate-100">{p.name}</span>
+                            <span className="text-xs font-mono text-slate-500">({p.id})</span>
+                          </div>
+                          <p className="text-xs text-slate-400">{p.zone}</p>
+                        </div>
+                        <div className="flex items-center gap-4 text-xs font-mono">
+                          <div>
+                            <span className="text-slate-500 block">Heart Rate</span>
+                            <span className={`font-bold ${p.heartRate > 100 ? 'text-rose-400 animate-pulse' : 'text-slate-200'}`}>
+                              {p.heartRate > 0 ? `${p.heartRate} bpm` : 'N/A'}
+                            </span>
+                          </div>
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                            p.status === 'Working' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' :
+                            p.status === 'Hazard' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 animate-pulse' :
+                            p.status === 'On Break' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' :
+                            'bg-slate-800 text-slate-400'
+                          }`}>
+                            {p.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Equipment Status Snapshot */}
+                <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <HardDrive className="w-4 h-4 text-cyan-400" /> Equipment Critical Telemetry
+                    </h3>
+                    <button 
+                      onClick={() => setActiveTab('machines')} 
+                      className="text-xs text-cyan-400 hover:underline flex items-center gap-1"
+                    >
+                      View All <ChevronRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    {machines.map(m => (
+                      <div key={m.id} className="p-3 bg-slate-950 rounded-xl border border-slate-800/80 flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-sm text-slate-100">{m.name}</span>
+                            <span className="text-xs font-mono text-slate-500">({m.id})</span>
+                          </div>
+                          <p className="text-xs text-slate-400">{m.type}</p>
+                        </div>
+                        <div className="flex items-center gap-4 text-xs font-mono">
+                          <div>
+                            <span className="text-slate-500 block">Temp / Load</span>
+                            <span className="text-slate-200 font-bold">{m.temp}°C / {m.load}%</span>
+                          </div>
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                            m.status === 'Running' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' :
+                            m.status === 'Fault' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40' :
+                            m.status === 'Idle' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' :
+                            'bg-slate-800 text-slate-400'
+                          }`}>
+                            {m.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+            </>
+          )}
+
+          {/* ==================== TAB 2: PERSONNEL MANAGEMENT ==================== */}
+          {activeTab === 'personnel' && (
+            <div className="space-y-6">
+              
+              {/* Controls Bar */}
+              <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-slate-900 p-4 rounded-2xl border border-slate-800">
+                
+                {/* Search */}
+                <div className="relative w-full md:w-80">
+                  <Search className="w-4 h-4 absolute left-3 top-3.5 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Search by name or ID..."
+                    value={personnelSearch}
+                    onChange={(e) => setPersonnelSearch(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                {/* Filters */}
+                <div className="flex gap-3 w-full md:w-auto">
+                  <select
+                    value={personnelStatusFilter}
+                    onChange={(e) => setPersonnelStatusFilter(e.target.value)}
+                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="All">All Statuses</option>
+                    <option value="Working">Working</option>
+                    <option value="On Break">On Break</option>
+                    <option value="Hazard">Hazard</option>
+                    <option value="Offline">Offline</option>
+                  </select>
+
+                  <select
+                    value={personnelZoneFilter}
+                    onChange={(e) => setPersonnelZoneFilter(e.target.value)}
+                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="All">All Zones</option>
+                    <option value="Zone A - Assembly">Zone A</option>
+                    <option value="Zone B - Chemical Processing">Zone B</option>
+                    <option value="Zone C - Machining">Zone C</option>
+                    <option value="Warehouse 1">Warehouse 1</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Personnel Table */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                <table className="w-full text-left border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-mono text-xs uppercase">
+                      <th className="py-4 px-6">ID & Employee Name</th>
+                      <th className="py-4 px-6">Role</th>
+                      <th className="py-4 px-6">Assigned Zone</th>
+                      <th className="py-4 px-6">Shift</th>
+                      <th className="py-4 px-6">Vitals (HR / Temp)</th>
+                      <th className="py-4 px-6">Status</th>
+                      <th className="py-4 px-6 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {filteredPersonnel.map(p => (
+                      <tr key={p.id} className="hover:bg-slate-800/30 transition-colors">
+                        <td className="py-4 px-6">
+                          <div className="font-semibold text-white">{p.name}</div>
+                          <div className="text-xs font-mono text-cyan-400">{p.id}</div>
+                        </td>
+                        <td className="py-4 px-6 text-slate-300">{p.role}</td>
+                        <td className="py-4 px-6 text-slate-300">{p.zone}</td>
+                        <td className="py-4 px-6 text-slate-400">{p.shift}</td>
+                        <td className="py-4 px-6 font-mono">
+                          {p.status !== 'Offline' ? (
+                            <div className="flex items-center gap-3">
+                              <span className={p.heartRate > 100 ? 'text-rose-400 font-bold animate-pulse' : 'text-slate-300'}>
+                                {p.heartRate} bpm
+                              </span>
+                              <span className="text-slate-600">/</span>
+                              <span className={p.bodyTemp > 37.5 ? 'text-amber-400 font-bold' : 'text-slate-300'}>
+                                {p.bodyTemp}°C
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-600">Offline</span>
+                          )}
+                        </td>
+                        <td className="py-4 px-6">
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium border ${
+                            p.status === 'Working' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' :
+                            p.status === 'Hazard' ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 animate-pulse' :
+                            p.status === 'On Break' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
+                            'bg-slate-800 text-slate-400 border-slate-700'
+                          }`}>
+                            {p.status}
+                          </span>
+                        </td>
+                        <td className="py-4 px-6 text-right space-x-2">
+                          <button
+                            onClick={() => { setEditingPersonnel(p); setPersonnelModalOpen(true); }}
+                            className="p-2 hover:bg-slate-800 text-slate-400 hover:text-cyan-400 rounded-lg transition-colors"
+                            title="Edit Employee"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeletePersonnel(p.id)}
+                            className="p-2 hover:bg-slate-800 text-slate-400 hover:text-rose-400 rounded-lg transition-colors"
+                            title="Delete Employee"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+            </div>
+          )}
+
+          {/* ==================== TAB 3: EQUIPMENT MONITORING ==================== */}
+          {activeTab === 'machines' && (
+            <div className="space-y-6">
+
+              {/* Controls Bar */}
+              <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-slate-900 p-4 rounded-2xl border border-slate-800">
+                <div className="relative w-full md:w-80">
+                  <Search className="w-4 h-4 absolute left-3 top-3.5 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Search machine ID or name..."
+                    value={machineSearch}
+                    onChange={(e) => setMachineSearch(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div className="flex gap-3 w-full md:w-auto">
+                  <select
+                    value={machineStatusFilter}
+                    onChange={(e) => setMachineStatusFilter(e.target.value)}
+                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="All">All Machine Statuses</option>
+                    <option value="Running">Running</option>
+                    <option value="Idle">Idle</option>
+                    <option value="Fault">Fault</option>
+                    <option value="Maintenance">Maintenance</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Equipment Grid Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredMachines.map(m => (
+                  <div key={m.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 relative flex flex-col justify-between hover:border-slate-700 transition-all">
+                    
+                    {/* Header */}
+                    <div>
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <span className="text-xs font-mono text-cyan-400">{m.id}</span>
+                          <h4 className="text-base font-bold text-white mt-0.5">{m.name}</h4>
+                          <p className="text-xs text-slate-400">{m.type} • {m.zone}</p>
+                        </div>
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
+                          m.status === 'Running' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' :
+                          m.status === 'Fault' ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 animate-pulse' :
+                          m.status === 'Idle' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
+                          'bg-slate-800 text-slate-400 border-slate-700'
+                        }`}>
+                          {m.status}
+                        </span>
+                      </div>
+
+                      {/* Gauges & Telemetry */}
+                      <div className="grid grid-cols-2 gap-4 my-6 bg-slate-950 p-4 rounded-xl border border-slate-800/80">
+                        <div>
+                          <span className="text-xs text-slate-500 flex items-center gap-1">
+                            <Thermometer className="w-3.5 h-3.5 text-rose-400" /> Temp
+                          </span>
+                          <span className={`text-lg font-bold font-mono ${m.temp > 85 ? 'text-rose-400' : 'text-slate-200'}`}>
+                            {m.temp}°C
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-xs text-slate-500 flex items-center gap-1">
+                            <Activity className="w-3.5 h-3.5 text-cyan-400" /> Work Load
+                          </span>
+                          <span className="text-lg font-bold font-mono text-slate-200">
+                            {m.load}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bottom Controls */}
+                    <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleTogglePower(m.id)}
+                          className={`p-2 rounded-xl transition-all ${
+                            m.powerState 
+                              ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30' 
+                              : 'bg-slate-800 text-slate-400 hover:text-white'
+                          }`}
+                          title="Remote Power Toggle"
+                        >
+                          <Power className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => { setEditingMachine(m); setMachineModalOpen(true); }}
+                          className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-colors"
+                          title="Edit Specs"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <button
+                        onClick={() => handleDeleteMachine(m.id)}
+                        className="p-2 hover:bg-rose-500/10 text-slate-500 hover:text-rose-400 rounded-xl transition-colors"
+                        title="Delete Asset"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                  </div>
+                ))}
+              </div>
+
+            </div>
+          )}
+
+          {/* ==================== TAB 4: ALERTS & AUDIT LOGS ==================== */}
+          {activeTab === 'logs' && (
+            <div className="space-y-6">
+
+              {/* Log Filters */}
+              <div className="flex items-center justify-between bg-slate-900 p-4 rounded-2xl border border-slate-800">
+                <div className="flex items-center gap-3">
+                  <Filter className="w-4 h-4 text-slate-400" />
+                  <span className="text-sm font-medium text-slate-300">Filter Severity:</span>
+                  <div className="flex gap-2">
+                    {['All', 'Hazard', 'Fault', 'Warning', 'Info'].map(type => (
+                      <button
+                        key={type}
+                        onClick={() => setLogTypeFilter(type)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                          logTypeFilter === type
+                            ? 'bg-cyan-600 text-white'
+                            : 'bg-slate-950 text-slate-400 hover:bg-slate-800'
+                        }`}
+                      >
+                        {type}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <span className="text-xs text-slate-500 font-mono">Total Logs: {filteredLogs.length}</span>
+              </div>
+
+              {/* Log Stream List */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                <div className="divide-y divide-slate-800">
+                  {filteredLogs.map(log => (
+                    <div key={log.id} className="p-4 hover:bg-slate-800/40 transition-colors flex items-center justify-between gap-4">
+                      <div className="flex items-start gap-4">
+                        <div className={`p-2.5 rounded-xl border mt-0.5 ${
+                          log.type === 'Hazard' || log.type === 'Fault' ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' :
+                          log.type === 'Warning' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
+                          'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                        }`}>
+                          <ShieldAlert className="w-5 h-5" />
+                        </div>
+
+                        <div>
+                          <div className="flex items-center gap-3">
+                            <span className="font-mono text-xs text-slate-500">{log.timestamp}</span>
+                            <span className="text-xs font-semibold px-2 py-0.5 bg-slate-800 text-slate-300 rounded">
+                              {log.category}
+                            </span>
+                            <span className={`text-xs font-bold ${
+                              log.type === 'Hazard' || log.type === 'Fault' ? 'text-rose-400' :
+                              log.type === 'Warning' ? 'text-amber-400' : 'text-blue-400'
+                            }`}>
+                              [{log.type}]
+                            </span>
+                          </div>
+                          <p className="text-sm font-medium text-slate-200 mt-1">{log.message}</p>
+                        </div>
+                      </div>
+
+                      <div>
+                        {log.status === 'Active' ? (
+                          <button
+                            onClick={() => handleResolveLog(log.id)}
+                            className="px-3 py-1.5 bg-slate-800 hover:bg-emerald-600/20 hover:text-emerald-400 text-slate-300 text-xs font-medium rounded-lg border border-slate-700 transition-all"
+                          >
+                            Dismiss / Resolve
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-500 flex items-center gap-1 font-mono">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Resolved
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+          )}
+
+        </div>
+      </main>
+
+      {/* ==================== MODAL: ADD / EDIT PERSONNEL ==================== */}
+      {personnelModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 space-y-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <h3 className="text-lg font-bold text-white">
+                {editingPersonnel ? 'Edit Operator Profile' : 'Register New Personnel'}
+              </h3>
+              <button 
+                onClick={() => setPersonnelModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                handleSavePersonnel({
+                  name: formData.get('name'),
+                  role: formData.get('role'),
+                  zone: formData.get('zone'),
+                  shift: formData.get('shift'),
+                  status: formData.get('status'),
+                  heartRate: parseInt(formData.get('heartRate') || '75'),
+                  bodyTemp: parseFloat(formData.get('bodyTemp') || '36.5'),
+                });
+              }}
+              className="space-y-4 text-sm"
+            >
+              <div>
+                <label className="block text-slate-400 mb-1">Employee Full Name</label>
+                <input
+                  name="name"
+                  defaultValue={editingPersonnel?.name || ''}
+                  required
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-400 mb-1">Role / Job Title</label>
+                  <input
+                    name="role"
+                    defaultValue={editingPersonnel?.role || 'Technician'}
+                    required
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1">Assigned Zone</label>
+                  <select
+                    name="zone"
+                    defaultValue={editingPersonnel?.zone || 'Zone A - Assembly'}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="Zone A - Assembly">Zone A - Assembly</option>
+                    <option value="Zone B - Chemical Processing">Zone B - Chemical</option>
+                    <option value="Zone C - Machining">Zone C - Machining</option>
+                    <option value="Warehouse 1">Warehouse 1</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-400 mb-1">Work Shift</label>
+                  <select
+                    name="shift"
+                    defaultValue={editingPersonnel?.shift || 'Morning'}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="Morning">Morning</option>
+                    <option value="Afternoon">Afternoon</option>
+                    <option value="Night">Night</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1">Current Status</label>
+                  <select
+                    name="status"
+                    defaultValue={editingPersonnel?.status || 'Working'}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="Working">Working</option>
+                    <option value="On Break">On Break</option>
+                    <option value="Hazard">Hazard</option>
+                    <option value="Offline">Offline</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-400 mb-1">Heart Rate (BPM)</label>
+                  <input
+                    type="number"
+                    name="heartRate"
+                    defaultValue={editingPersonnel?.heartRate || 75}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1">Body Temp (°C)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    name="bodyTemp"
+                    defaultValue={editingPersonnel?.bodyTemp || 36.5}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPersonnelModalOpen(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-medium"
+                >
+                  Save Profile
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== MODAL: ADD / EDIT MACHINE ==================== */}
+      {machineModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 space-y-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <h3 className="text-lg font-bold text-white">
+                {editingMachine ? 'Edit Equipment Specs' : 'Register New Machine Asset'}
+              </h3>
+              <button 
+                onClick={() => setMachineModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                handleSaveMachine({
+                  name: formData.get('name'),
+                  type: formData.get('type'),
+                  zone: formData.get('zone'),
+                  status: formData.get('status'),
+                  lastMaintenance: formData.get('lastMaintenance'),
+                });
+              }}
+              className="space-y-4 text-sm"
+            >
+              <div>
+                <label className="block text-slate-400 mb-1">Equipment Name</label>
+                <input
+                  name="name"
+                  defaultValue={editingMachine?.name || ''}
+                  required
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-400 mb-1">Machine Type</label>
+                  <input
+                    name="type"
+                    defaultValue={editingMachine?.type || 'Heavy Duty'}
+                    required
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1">Assigned Zone</label>
+                  <select
+                    name="zone"
+                    defaultValue={editingMachine?.zone || 'Zone A - Assembly'}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="Zone A - Assembly">Zone A - Assembly</option>
+                    <option value="Zone B - Chemical Processing">Zone B - Chemical</option>
+                    <option value="Zone C - Machining">Zone C - Machining</option>
+                    <option value="Warehouse 1">Warehouse 1</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-400 mb-1">Operating Status</label>
+                  <select
+                    name="status"
+                    defaultValue={editingMachine?.status || 'Idle'}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="Running">Running</option>
+                    <option value="Idle">Idle</option>
+                    <option value="Fault">Fault</option>
+                    <option value="Maintenance">Maintenance</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1">Last Maintenance Date</label>
+                  <input
+                    type="date"
+                    name="lastMaintenance"
+                    defaultValue={editingMachine?.lastMaintenance || new Date().toISOString().split('T')[0]}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setMachineModalOpen(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-medium"
+                >
+                  Save Equipment
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
